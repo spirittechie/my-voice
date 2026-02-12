@@ -1,0 +1,15 @@
+[stt]
+model_dir = "assets/en-us-small"
+remote_url = ""
+
+[tts]
+voice = "en-us"
+remote_url = ""
+
+[ui]
+high_contrast = false
+verbose = false
+max_record_sec = 15
+
+[general]
+verbose_logging = false
