@@ -42,10 +42,20 @@ class GUI:
             text = "deterministic test voice input"
             self.runtime.state.set("transcript", text)
             await self.runtime.events.emit("transcription_result", {"text": text})
+            self.auto_paste(text)
             self.update_status("Complete")
         except Exception as e:
             logging.error(f"STT fail: {e}")
             self.update_status("Error")
+            self.show_alert(str(e))
+
+    def auto_paste(self, text):
+        try:
+            subprocess.run(["wl-copy", text], timeout=5)
+            subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+v"], timeout=5)
+            logging.info("Auto-paste success")
+        except Exception as e:
+            logging.error(f"Paste fail: {e}")
 
     def on_read(self, btn):
         self.update_status("Reading")
@@ -54,12 +64,24 @@ class GUI:
                 "wl-paste"
             )
             if text:
-                subprocess.run(["espeak", "-s", "150", text], check=False)
+                subprocess.run(["espeak", "-s", "150", text], check=False, timeout=10)
                 self.update_status("Complete")
                 logging.info("TTS completed")
         except Exception as e:
             logging.error(f"TTS fail: {e}")
             self.update_status("Error")
+            self.show_alert(str(e))
+
+    def show_alert(self, msg):
+        dialog = Gtk.MessageDialog(
+            transient_for=self.window,
+            flags=0,
+            message_type=Gtk.MessageType.ERROR,
+            buttons=Gtk.ButtonsType.OK,
+            text=msg,
+        )
+        dialog.run()
+        dialog.destroy()
 
     def show(self):
         self.window.present()
