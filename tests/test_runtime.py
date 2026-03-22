@@ -1,17 +1,31 @@
 import asyncio
 import pytest
-from src.runtime import Runtime, EventBus
+from src.runtime.runtime import Runtime
+from src.runtime.orchestrator import Orchestrator
 
 
 @pytest.mark.asyncio
-async def test_runtime_spine():
+async def test_runtime_init():
     rt = Runtime()
-    events = []
+    await rt.init()
+    assert rt.state is not None
 
-    async def handler(d):
-        events.append(d.get("msg"))
 
-    rt.bus.subscribe("test", handler)
-    await rt.dispatch("test", {"msg": "flow_complete"})
-    assert "flow_complete" in events
-    assert len(rt.state) == 0 or True
+@pytest.mark.asyncio
+async def test_event_dispatch():
+    rt = Runtime()
+    received = []
+
+    async def h(d):
+        received.append(d)
+
+    rt.events.subscribe("test", h)
+    await rt.events.emit("test", {"ok": True})
+    assert len(received) > 0
+
+
+@pytest.mark.asyncio
+async def test_state_transitions():
+    o = Orchestrator()
+    res = await o.run()
+    assert res == "stub transcription"

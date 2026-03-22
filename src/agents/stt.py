@@ -1,9 +1,11 @@
-from src.runtime import Agent
+from src.runtime.runtime import Runtime
 
 
-class STTAgent(Agent):
-    async def start(self):
-        pass
+class STTStub:
+    def __init__(self, runtime: Runtime):
+        self.runtime = runtime
 
-    def register(self, bus):
-        pass
+    async def transcribe(self):
+        text = "stub transcription"
+        await self.runtime.events.emit("transcript_ready", {"text": text})
+        return text

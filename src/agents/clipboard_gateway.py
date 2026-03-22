@@ -1,13 +1,10 @@
-from src.runtime import Agent
+from src.runtime.runtime import Runtime
 
 
-class ClipboardGateway(Agent):
-    async def start(self):
-        pass
+class ClipboardGateway:
+    def __init__(self, runtime: Runtime):
+        self.runtime = runtime
 
-    def register(self, bus):
-        bus.subscribe("transcript_ready", self.on_transcript)
-
-    async def on_transcript(self, data):
-        self.runtime.update_state("last_clipboard", data.get("text", ""))
-        await self.runtime.dispatch("clipboard_updated", data)
+    async def write(self, text):
+        self.runtime.state.set("clipboard", text)
+        await self.runtime.events.emit("clipboard_updated", {"text": text})
