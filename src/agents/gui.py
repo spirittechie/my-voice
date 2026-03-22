@@ -3,6 +3,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, GLib, Gio
 from src.runtime.runtime import Runtime
+from src.agents.stt import STTStub
 import subprocess
 import logging
 import asyncio
@@ -38,10 +39,10 @@ class GUI:
 
     async def _record_flow(self):
         try:
-            self.update_status("Processing")
-            text = "deterministic test voice input"
+            self.update_status("Recording")
+            stt = STTStub(self.runtime)
+            text = await stt.transcribe()
             self.runtime.state.set("transcript", text)
-            await self.runtime.events.emit("transcription_result", {"text": text})
             self.auto_paste(text)
             self.update_status("Complete")
         except Exception as e:
