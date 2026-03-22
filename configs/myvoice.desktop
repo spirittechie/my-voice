@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=My Voice
+Comment=Voice appliance for Linux
+Exec=/home/jessepaul/my-voice/MyVoiceV2/bin/myvoice
+Icon=applications-multimedia
+Terminal=false
+Categories=Utility;Accessibility;
+StartupNotify=true
