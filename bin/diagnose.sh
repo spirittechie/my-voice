@@ -92,6 +92,62 @@ PY
     fi
 }
 
+attempt_paste_injector() {
+    if has_tool wtype; then
+        wtype -M ctrl -k v -m ctrl >/dev/null 2>&1 || true
+        return 0
+    fi
+    if has_tool xdotool; then
+        xdotool key --clearmodifiers ctrl+v >/dev/null 2>&1 || true
+        return 0
+    fi
+    return 1
+}
+
+run_dictation_live() {
+    section "dictation-live"
+    local transcript
+    transcript="$(python3 - <<'PY'
+from src.runtime.runtime import Runtime
+from src.agents.stt import STTStub
+rt = Runtime()
+agent = STTStub(rt)
+text = agent.transcribe()
+print(text)
+PY
+)"
+
+    log "[INFO] transcript: ${transcript}"
+
+    if [[ "$transcript" == capture\ failed:* ]]; then
+        log "[FAIL] dictation capture/transcribe failed"
+        return 1
+    fi
+
+    if has_tool wl-copy; then
+        if printf "%s" "$transcript" | wl-copy; then
+            log "[PASS] transcript copied to clipboard"
+        else
+            log "[FAIL] clipboard write failed"
+            return 1
+        fi
+    else
+        log "[FAIL] wl-copy unavailable; cannot restore clipboard step"
+        return 1
+    fi
+
+    if [[ "${MYVOICE_AUTOPASTE:-1}" == "0" ]]; then
+        log "[INFO] auto-paste skipped by MYVOICE_AUTOPASTE=0"
+        return 0
+    fi
+
+    if attempt_paste_injector; then
+        log "[PASS] paste key-injection attempted"
+    else
+        log "[INFO] no paste injector available (wtype/xdotool); clipboard step still complete"
+    fi
+}
+
 check_tts_path() {
     section "tts"
     if has_tool espeak-ng; then
@@ -177,6 +233,7 @@ full_diag() {
     log "Run live checks when ready:"
     log "  ./bin/diagnose.sh launch"
     log "  ./bin/diagnose.sh stt-live"
+    log "  ./bin/diagnose.sh dictate-live"
     log "  ./bin/diagnose.sh tts-live"
     log "my-voice diagnostic end $(date)"
 }
@@ -190,6 +247,7 @@ Commands:
   launch          Launch app for a timed diagnosis window
   stt             Verify STT dependencies and runtime initialization
   stt-live        Execute live STT capture/transcribe path
+  dictate-live    Execute trigger->capture->transcribe->clipboard/paste path
   tts             Verify TTS dependency and runtime path
   tts-live        Execute live TTS speech command
   hotkeys         Report hotkey implementation status
@@ -198,6 +256,7 @@ Commands:
 Examples:
   ./bin/diagnose.sh full
   ./bin/diagnose.sh launch
+  ./bin/diagnose.sh dictate-live
   ./bin/diagnose.sh stt-live
 EOF
 }
@@ -217,6 +276,10 @@ stt)
 stt-live)
     : > "$LOG_FILE"
     run_stt_live
+    ;;
+dictate-live)
+    : > "$LOG_FILE"
+    run_dictation_live
     ;;
 tts)
     : > "$LOG_FILE"

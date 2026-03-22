@@ -6,12 +6,13 @@ cd "$ROOT"
 
 usage() {
     cat <<'EOF'
-Usage: ./bin/build.sh [deps|check|run|smoke]
+Usage: ./bin/build.sh [deps|check|run|smoke|dictate]
 
 deps   Install/update Python dependencies from requirements.txt
 check  Verify developer runtime dependencies and app entrypoints
 run    Launch the real app via ./bin/myvoice
 smoke  Run operational diagnostics via ./bin/diagnose.sh full
+dictate Run live dictation path diagnostic
 
 Notes:
 - This is a developer build/run helper, not a binary packager.
@@ -72,6 +73,9 @@ run)
     ;;
 smoke)
     exec ./bin/diagnose.sh full
+    ;;
+dictate)
+    exec ./bin/diagnose.sh dictate-live
     ;;
 *)
     usage

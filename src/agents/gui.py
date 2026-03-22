@@ -1,5 +1,6 @@
 import gi
 import logging
+import os
 import subprocess
 
 gi.require_version("Gtk", "4.0")
@@ -52,9 +53,34 @@ class GUI:
     def auto_paste(self, text):
         try:
             subprocess.run(["wl-copy", text], check=True, timeout=5)
-            logging.info("Auto-paste success")
+            logging.info("Clipboard write success")
+            if self._autopaste_enabled():
+                if self._attempt_paste_keystroke():
+                    logging.info("Auto-paste key injection success")
+                else:
+                    logging.info("Clipboard ready; no paste injector available")
         except Exception as e:
             logging.error(f"Paste fail: {e}")
+
+    def _autopaste_enabled(self):
+        return os.getenv("MYVOICE_AUTOPASTE", "1") != "0"
+
+    def _attempt_paste_keystroke(self):
+        if subprocess.run(["which", "wtype"], capture_output=True).returncode == 0:
+            subprocess.run(
+                ["wtype", "-M", "ctrl", "-k", "v", "-m", "ctrl"],
+                check=False,
+                timeout=5,
+            )
+            return True
+        if subprocess.run(["which", "xdotool"], capture_output=True).returncode == 0:
+            subprocess.run(
+                ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
+                check=False,
+                timeout=5,
+            )
+            return True
+        return False
 
     def on_read(self, btn):
         self.update_status("Reading")
