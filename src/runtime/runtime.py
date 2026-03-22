@@ -14,19 +14,24 @@ class EventSystem:
         if data is None:
             data = {}
         data["trace"] = str(uuid.uuid4())[:6]
-        for _, h in sorted(self.subscribers[event], key=lambda x: -x[0]):
+        for _, h in sorted(self.subscribers.get(event, []), key=lambda x: -x[0]):
             await h(data)
 
 
 class StateModel:
     def __init__(self):
-        self.data = {}
+        self.data = {"current": "idle"}
+        self.history = []
+
+    def transition(self, to):
+        self.history.append((self.data["current"], to))
+        self.data["current"] = to
+
+    def get(self, k="current"):
+        return self.data.get(k)
 
     def set(self, k, v):
         self.data[k] = v
-
-    def get(self, k):
-        return self.data.get(k)
 
 
 class Runtime:
@@ -35,4 +40,13 @@ class Runtime:
         self.state = StateModel()
 
     async def init(self):
-        pass
+        self.state.transition("idle")
+
+    async def trigger(self, event, data=None):
+        await self.events.emit(event, data)
+        if event == "input_trigger":
+            self.state.transition("listening")
+        elif event == "transcription_result":
+            self.state.transition("success")
+        elif event == "error":
+            self.state.transition("error")

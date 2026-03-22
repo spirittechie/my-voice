@@ -6,6 +6,7 @@ class STTStub:
         self.runtime = runtime
 
     async def transcribe(self):
-        text = "stub transcription"
-        await self.runtime.events.emit("transcript_ready", {"text": text})
+        self.runtime.state.transition("transcribing")
+        text = "deterministic test voice input"
+        await self.runtime.events.emit("transcription_result", {"text": text})
         return text

@@ -8,7 +8,7 @@ from src.runtime.orchestrator import Orchestrator
 async def test_runtime_init():
     rt = Runtime()
     await rt.init()
-    assert rt.state is not None
+    assert rt.state.get() == "idle"
 
 
 @pytest.mark.asyncio
@@ -17,15 +17,19 @@ async def test_event_dispatch():
     received = []
 
     async def h(d):
-        received.append(d)
+        received.append(d.get("text"))
 
-    rt.events.subscribe("test", h)
-    await rt.events.emit("test", {"ok": True})
-    assert len(received) > 0
+    rt.events.subscribe("transcription_result", h)
+    await rt.events.emit("transcription_result", {"text": "test"})
+    assert "test" in received
 
 
 @pytest.mark.asyncio
-async def test_state_transitions():
+async def test_full_flow():
     o = Orchestrator()
-    res = await o.run()
-    assert res == "stub transcription"
+    result = await o.execute_flow()
+    assert result["final_state"] == "idle"
+    assert result["clipboard"] == "deterministic test voice input"
+    assert any("transcribing" in str(h) for h in result["history"])
+    assert any("clipboard-writing" in str(h) for h in result["history"])
+    assert any("success" in str(h) for h in result["history"])
