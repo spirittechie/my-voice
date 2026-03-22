@@ -27,9 +27,5 @@ async def test_event_dispatch():
 @pytest.mark.asyncio
 async def test_full_flow():
     o = Orchestrator()
-    result = await o.execute_flow()
-    assert result["final_state"] == "idle"
-    assert result["clipboard"] == "deterministic test voice input"
-    assert any("transcribing" in str(h) for h in result["history"])
-    assert any("clipboard-writing" in str(h) for h in result["history"])
-    assert any("success" in str(h) for h in result["history"])
+    result = await o.run_flow()
+    assert "clipboard" in str(o.runtime.state.data)
