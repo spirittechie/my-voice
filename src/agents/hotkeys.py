@@ -6,7 +6,4 @@ class HotkeyListener:
         self.callback = callback
 
     def start(self):
-        print("Hotkey listener started (stub for Super+W / Super+R)")
-
-    def stop(self):
         pass

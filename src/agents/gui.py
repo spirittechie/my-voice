@@ -64,7 +64,11 @@ class GUI:
                 "wl-paste"
             )
             if text:
-                subprocess.run(["espeak", "-s", "150", text], check=False, timeout=10)
+                subprocess.run(
+                    ["espeak-ng", "-s", "160", "-v", "en", text],
+                    check=False,
+                    timeout=15,
+                )
                 self.update_status("Complete")
                 logging.info("TTS completed")
         except Exception as e:

@@ -2,5 +2,5 @@
 echo "My Voice Build Helper"
 echo "Installing deps if needed..."
 python -m pip install --user pygobject
-echo "To run: python -m src.agents.gui"
-echo "For packaging: pyinstaller --onefile --windowed src/agents/gui.py"
+echo "To run: ./bin/myvoice"
+echo "Launcher ready for packaging."
