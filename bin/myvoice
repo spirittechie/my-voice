@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+LAUNCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$LAUNCHER_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+echo "My Voice Launcher: Starting from $PROJECT_ROOT..."
+python3 -m src.agents.gui || echo "Error: Failed to launch app. Check dependencies."

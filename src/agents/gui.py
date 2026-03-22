@@ -1,7 +1,7 @@
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, Gio
 from src.runtime.runtime import Runtime
 import subprocess
 import logging
@@ -88,4 +88,14 @@ class GUI:
 
     def run(self):
         self.show()
-        Gtk.main()
+        self.window.present()
+
+
+if __name__ == "__main__":
+    runtime = Runtime()
+    gui = GUI(runtime)
+    app = Gtk.Application(
+        application_id="com.myvoice.gui", flags=Gio.ApplicationFlags.FLAGS_NONE
+    )
+    app.connect("activate", lambda a: gui.show())
+    app.run(None)
