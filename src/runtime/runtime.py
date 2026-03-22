@@ -43,7 +43,7 @@ class Runtime:
         self.state.transition("idle")
 
     async def trigger(self, event, data=None):
-        await self.events.emit(event, data)
+        self.events.emit(event, data)
         if event == "input_trigger":
             self.state.transition("listening")
         elif event == "transcription_result":

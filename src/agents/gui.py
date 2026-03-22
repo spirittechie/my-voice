@@ -1,12 +1,13 @@
 import gi
+import logging
+import subprocess
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk, Gio, GLib
-from src.runtime.runtime import Runtime
-from src.agents.stt import STTStub
+from gi.repository import Gio, Gtk
+
 from src.agents.hotkeys import HotkeyListener
-import subprocess
-import logging
+from src.agents.stt import STTStub
+from src.runtime.runtime import Runtime
 
 logging.basicConfig(level=logging.INFO)
 
@@ -50,7 +51,7 @@ class GUI:
 
     def auto_paste(self, text):
         try:
-            subprocess.run(["wl-copy", text], timeout=5)
+            subprocess.run(["wl-copy", text], check=True, timeout=5)
             logging.info("Auto-paste success")
         except Exception as e:
             logging.error(f"Paste fail: {e}")
@@ -62,8 +63,16 @@ class GUI:
                 "wl-paste"
             )
             if text:
+                tts_cmd = "espeak-ng"
+                if (
+                    subprocess.run(
+                        ["which", "espeak-ng"], capture_output=True
+                    ).returncode
+                    != 0
+                ):
+                    tts_cmd = "espeak"
                 subprocess.run(
-                    ["espeak-ng", "-s", "160", "-v", "en", text],
+                    [tts_cmd, "-s", "160", "-v", "en", text],
                     check=False,
                     timeout=15,
                 )
@@ -109,8 +118,6 @@ if __name__ == "__main__":
         runtime = Runtime()
         gui = GUI(runtime, app)
         gui.show()
-        GLib.timeout_add(500, lambda: (gui.on_record(None), gui.on_read(None), False))
-        GLib.timeout_add(3000, lambda: app.quit() or False)
 
     app.connect("activate", on_activate)
     app.run(None)

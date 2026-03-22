@@ -4,4 +4,4 @@ LAUNCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$LAUNCHER_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 -m src.agents.gui
+exec python3 -m src.agents.gui "$@"
