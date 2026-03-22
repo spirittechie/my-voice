@@ -97,10 +97,14 @@ class GUI:
 
 
 if __name__ == "__main__":
-    runtime = Runtime()
-    gui = GUI(runtime)
     app = Gtk.Application(
         application_id="com.myvoice.gui", flags=Gio.ApplicationFlags.FLAGS_NONE
     )
-    app.connect("activate", lambda a: gui.show())
+
+    def on_activate(app):
+        runtime = Runtime()
+        gui = GUI(runtime)
+        gui.show()
+
+    app.connect("activate", on_activate)
     app.run(None)
