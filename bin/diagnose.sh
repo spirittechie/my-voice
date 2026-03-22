@@ -28,6 +28,18 @@ check_launcher() {
         log "[FAIL] launcher missing or not executable: ./bin/myvoice"
         return 1
     fi
+
+    if [[ -x "./bin/myvoice-stt.sh" ]]; then
+        log "[PASS] one-shot STT helper executable at ./bin/myvoice-stt.sh"
+    else
+        log "[INFO] one-shot STT helper missing or not executable"
+    fi
+
+    if [[ -x "./bin/myvoice-tts.sh" ]]; then
+        log "[PASS] one-shot TTS helper executable at ./bin/myvoice-tts.sh"
+    else
+        log "[INFO] one-shot TTS helper missing or not executable"
+    fi
 }
 
 check_runtime_path() {

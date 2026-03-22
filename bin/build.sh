@@ -6,13 +6,14 @@ cd "$ROOT"
 
 usage() {
     cat <<'EOF'
-Usage: ./bin/build.sh [deps|check|run|smoke|dictate]
+Usage: ./bin/build.sh [deps|check|run|smoke|dictate|test]
 
 deps   Install/update Python dependencies from requirements.txt
 check  Verify developer runtime dependencies and app entrypoints
 run    Launch the real app via ./bin/myvoice
 smoke  Run operational diagnostics via ./bin/diagnose.sh full
 dictate Run live dictation path diagnostic
+test    Run diagnostic helper (same as ./bin/test.sh full)
 
 Notes:
 - This is a developer build/run helper, not a binary packager.
@@ -42,6 +43,11 @@ check_runtime() {
     check_tool wl-copy
     check_tool wl-paste
     check_tool espeak-ng
+    if command -v wtype >/dev/null 2>&1 || command -v xdotool >/dev/null 2>&1; then
+        echo "[ok] paste injector available (wtype/xdotool)"
+    else
+        echo "[info] no paste injector found; clipboard-only handoff"
+    fi
     if ! command -v espeak >/dev/null 2>&1 && ! command -v espeak-ng >/dev/null 2>&1; then
         echo "[missing] no espeak/espeak-ng found"
     fi
@@ -76,6 +82,9 @@ smoke)
     ;;
 dictate)
     exec ./bin/diagnose.sh dictate-live
+    ;;
+test)
+    exec ./bin/test.sh full
     ;;
 *)
     usage

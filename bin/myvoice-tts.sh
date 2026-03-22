@@ -1,16 +1,28 @@
-#!/bin/bash
-# My Voice TTS hotkey wrapper (Super+R)
+#!/usr/bin/env bash
+set -euo pipefail
 
-HOME_MYVOICE="$HOME/my-voice"
-if [ -d "$HOME_MYVOICE" ]; then
-  cd "$HOME_MYVOICE"
-  text=$(wl-paste 2>/dev/null || xsel -p 2>/dev/null || xclip -selection primary -o 2>/dev/null)
-  text=$(echo "$text" | head -c 500 | tr -d '\n\r')
-  if [ -n "$text" ]; then
-    dbus-send --session --dest=com.myvoice.Service /com/myvoice/service com.myvoice.Service.speak string:"$text"
-  else
-    notify-send "My Voice" "No selection"
-  fi
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+if command -v wl-paste >/dev/null 2>&1; then
+    TEXT="$(wl-paste --primary 2>/dev/null || true)"
+    if [[ -z "$TEXT" ]]; then
+        TEXT="$(wl-paste 2>/dev/null || true)"
+    fi
 else
-  notify-send "My Voice" "Not in ~/my-voice"
+    TEXT=""
+fi
+
+if [[ -z "$TEXT" ]]; then
+    echo "[myvoice-tts] no clipboard/selection text found"
+    exit 1
+fi
+
+if command -v espeak-ng >/dev/null 2>&1; then
+    exec espeak-ng -s 160 -v en "$TEXT"
+elif command -v espeak >/dev/null 2>&1; then
+    exec espeak -s 160 -v en "$TEXT"
+else
+    echo "[myvoice-tts] missing TTS engine: espeak-ng/espeak"
+    exit 1
 fi
