@@ -10,12 +10,12 @@ class EventSystem:
     def subscribe(self, event, handler, prio=0):
         self.subscribers[event].append((prio, handler))
 
-    async def emit(self, event, data=None):
+    def emit(self, event, data=None):
         if data is None:
             data = {}
         data["trace"] = str(uuid.uuid4())[:6]
         for _, h in sorted(self.subscribers.get(event, []), key=lambda x: -x[0]):
-            await h(data)
+            h(data)
 
 
 class StateModel:

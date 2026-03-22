@@ -24,19 +24,19 @@ class Orchestrator:
         self.runtime.events.subscribe("transcription_result", self._handle_transcript)
         self.runtime.events.subscribe("clipboard_write", self._handle_clipboard)
 
-    async def _handle_input(self, data):
+    def _handle_input(self, data):
         self.gui.update_status("Transcribing...")
         self.runtime.state.transition("transcribing")
-        text = await self.stt.transcribe()
-        await self.runtime.events.emit("transcription_result", {"text": text})
+        text = self.stt.transcribe()
+        self.runtime.events.emit("transcription_result", {"text": text})
 
-    async def _handle_transcript(self, data):
-        success = await self.clipboard.transaction(data["text"])
+    def _handle_transcript(self, data):
+        success = self.clipboard.transaction(data["text"])
         if success:
             self.gui.update_status("Ready")
             self.runtime.state.transition("idle")
 
-    async def _handle_clipboard(self, data):
+    def _handle_clipboard(self, data):
         self.runtime.events.emit("success", data)
 
     def start(self):

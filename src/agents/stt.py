@@ -11,7 +11,7 @@ class STTStub:
         self.runtime = runtime
         self.model = vosk.Model(str(Path("assets/en-us-small")))
 
-    async def transcribe(self):
+    def transcribe(self):
         self.runtime.state.transition("transcribing")
         try:
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
@@ -49,9 +49,9 @@ class STTStub:
             text = json.loads(rec.FinalResult()).get("text", "no input")
             for p in (audio_file, pcm):
                 p.unlink(missing_ok=True)
-            await self.runtime.events.emit("transcription_result", {"text": text})
+            self.runtime.events.emit("transcription_result", {"text": text})
             return text
         except Exception as e:
             text = f"capture failed: {str(e)[:30]}"
-            await self.runtime.events.emit("transcription_result", {"text": text})
+            self.runtime.events.emit("transcription_result", {"text": text})
             return text

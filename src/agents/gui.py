@@ -1,20 +1,20 @@
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk, GLib, Gio
+from gi.repository import Gtk, Gio, GLib
 from src.runtime.runtime import Runtime
 from src.agents.stt import STTStub
+from src.agents.hotkeys import HotkeyListener
 import subprocess
 import logging
-import asyncio
 
 logging.basicConfig(level=logging.INFO)
 
 
 class GUI:
-    def __init__(self, runtime):
+    def __init__(self, runtime, app=None):
         self.runtime = runtime
-        self.window = Gtk.Window(title="My Voice")
+        self.window = Gtk.Window(title="My Voice", application=app)
         self.window.set_default_size(400, 300)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.status = Gtk.Label(label="Idle")
@@ -27,6 +27,8 @@ class GUI:
         box.append(read_btn)
         self.window.set_child(box)
         self.current_state = "Idle"
+        self.hotkeys = HotkeyListener(self.on_hotkey)
+        self.hotkeys.start()
 
     def update_status(self, state):
         self.status.set_text(state)
@@ -35,13 +37,9 @@ class GUI:
 
     def on_record(self, btn):
         self.update_status("Recording")
-        asyncio.create_task(self._record_flow())
-
-    async def _record_flow(self):
         try:
-            self.update_status("Recording")
             stt = STTStub(self.runtime)
-            text = await stt.transcribe()
+            text = stt.transcribe()
             self.runtime.state.set("transcript", text)
             self.auto_paste(text)
             self.update_status("Complete")
@@ -53,7 +51,6 @@ class GUI:
     def auto_paste(self, text):
         try:
             subprocess.run(["wl-copy", text], timeout=5)
-            subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+v"], timeout=5)
             logging.info("Auto-paste success")
         except Exception as e:
             logging.error(f"Paste fail: {e}")
@@ -76,6 +73,13 @@ class GUI:
             logging.error(f"TTS fail: {e}")
             self.update_status("Error")
             self.show_alert(str(e))
+
+    def on_hotkey(self, key):
+        if key == "Super+W":
+            self.on_record(None)
+        elif key == "Super+R":
+            self.on_read(None)
+        logging.info(f"Hotkey triggered: {key}")
 
     def show_alert(self, msg):
         dialog = Gtk.MessageDialog(
@@ -103,8 +107,10 @@ if __name__ == "__main__":
 
     def on_activate(app):
         runtime = Runtime()
-        gui = GUI(runtime)
+        gui = GUI(runtime, app)
         gui.show()
+        GLib.timeout_add(500, lambda: (gui.on_record(None), gui.on_read(None), False))
+        GLib.timeout_add(3000, lambda: app.quit() or False)
 
     app.connect("activate", on_activate)
     app.run(None)
