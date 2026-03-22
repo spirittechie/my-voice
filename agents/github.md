@@ -29,6 +29,7 @@ The agent must:
 - push after each meaningful edit set
 - keep markdown, docs, and code synchronized
 - refuse to leave the repo in a dirty state unless explicitly told to pause without committing
+- never ask the user unless the task cannot be completed without it or an error occurs that requires user decision
 
 ## Definition of Meaningful Edit
 
