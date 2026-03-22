@@ -27,9 +27,13 @@ class MyVoiceService(dbus.service.Object):
         self.model_dir = Path(
             self.config.get("stt", {}).get("model_dir", "assets/en-us-small")
         ).resolve()
+        self.current_proc = None
 
     @dbus.service.method("com.myvoice.Service", in_signature="i", out_signature="s")
     def start_recording(self, duration):
+        if self.current_proc and self.current_proc.poll() is None:
+            self.current_proc.terminate()
+            self.current_proc = None
         audio_file = self.temp_dir / "recording.wav"
         cmd = ["arecord", "-d", str(duration), "-f", "cd", "-t", "wav", str(audio_file)]
         proc = subprocess.Popen(cmd)
@@ -108,7 +112,15 @@ class MyVoiceService(dbus.service.Object):
 
     @dbus.service.method("com.myvoice.Service", in_signature="s", out_signature="")
     def speak(self, text):
-        subprocess.Popen(["espeak-ng", text])
+        if (
+            hasattr(self, "current_proc")
+            and self.current_proc
+            and self.current_proc.poll() is None
+        ):
+            self.current_proc.terminate()
+        self.current_proc = subprocess.Popen(["espeak-ng", "-q", text])
+        self.current_proc.wait()
+        self.playback_completed(text)
 
     @dbus.service.signal("com.myvoice.Signal", signature="s")
     def recording_complete(self, path):
@@ -116,6 +128,14 @@ class MyVoiceService(dbus.service.Object):
 
     @dbus.service.signal("com.myvoice.Signal", signature="ss")
     def transcription_ready(self, path, text):
+        pass
+
+    @dbus.service.signal("com.myvoice.Signal", signature="s")
+    def playback_completed(self, text):
+        pass
+
+    @dbus.service.signal("com.myvoice.Signal", signature="s")
+    def playback_failed(self, text):
         pass
 
 

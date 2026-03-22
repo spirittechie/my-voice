@@ -1,0 +1,33 @@
+# Network Agent for "My Voice"
+
+## Role
+The Network Agent is responsible for managing all remote connections in the app, enabling advanced STT/TTS capabilities (e.g., sending audio/text to a VPS or APIs for ML inference like Qwen3-TTS or whisper.cpp) while strictly enforcing security and providing reliable fallbacks. It supports integration with third-party services like ElevenLabs for remote voice synthesis (e.g., voice cloning and natural TTS voices) and remote STT providers (e.g., Google Cloud Speech-to-Text or AssemblyAI for accurate transcription). As the "gatekeeper," it protects user privacy (e.g., anonymizing voice data) and ensures accessibility by minimizing disruptions (e.g., quick fallbacks to local mode with notifications), reducing cognitive load for users with fatigue or disabilities. The agent promotes scalability, allowing users to configure multiple providers via toml (e.g., switch from local eSpeak to ElevenLabs for premium voices), making "My Voice" versatile for high-end features without requiring powerful local hardware.
+
+## Inputs
+- Configuration from configs/config.toml (e.g., provider-specific URLs like "https://api.elevenlabs.io/v1/text-to-speech" for TTS, API keys, params like voice ID/stability for ElevenLabs, timeout/retry settings, preferred STT/TTS models).
+- Requests from other agents (e.g., audio blob from STT Agent for remote transcription, text string from TTS Agent for synthesis, with metadata like "provider: elevenlabs" or "voice: custom-clone").
+- System status (e.g., network availability from orchestrator, user prefs for "offline-only" or "premium voice mode").
+- Validation triggers (e.g., "test endpoint" from GUI Agent prefs dialog, or "clone voice" with reference audio from TTS Agent).
+
+## Outputs
+- Processed results (e.g., transcribed text from remote STT, synthesized audio stream from ElevenLabs returned to STT/TTS Agents).
+- Validation status (e.g., "secure and responsive" with green lock to GUI, or "fallback activated—rate limit hit on ElevenLabs").
+- Error reports (e.g., detailed logs like "Rejected: Invalid API key for Google STT—check prefs" sent to GUI for display, or to orchestrator for retry).
+- Metrics for monitoring (e.g., latency, cost estimate for paid services like ElevenLabs, sent to logs or Accessibility Agent for adaptive behaviors like "switch providers if cost > threshold").
+
+## Reactions
+- **On Input Validation**: When receiving a request or config change, immediately check URL format (must start with "https://"—reject HTTP with error "Insecure connection detected; fallback to local mode"). For provider-specific validation, test endpoint with a HEAD request or small API call (using configured timeout, e.g., 5s default) to verify responsiveness, valid SSL cert, and auth (e.g., for ElevenLabs, test /voices endpoint with key). If fails (e.g., 401 unauthorized), auto-fallback to local mode and log details (e.g., "Failure: 429 Rate Limit on ElevenLabs—trying again in 60s").
+- **On Remote Request Handling**: For STT inputs (e.g., audio from STT Agent), select provider from config (e.g., Google Cloud STT), attach API key/params (e.g., language code), send via secure POST, and parse response (e.g., JSON with transcript). For TTS inputs (e.g., text from TTS Agent to ElevenLabs), include voice params (e.g., "voice_id: custom, stability: 0.5, similarity_boost: 0.75" for cloning), generate audio stream, and return for playback. Handle service-specific features (e.g., ElevenLabs voice cloning: If input includes reference audio, call /voice-generation endpoint first, then use the new voice ID for synthesis). On success, return data; on error (e.g., quota exceeded), retry up to configured count (e.g., 3 times with backoff) before falling back.
+- **Fallback and Logging**: If remote fails (e.g., no network, API downtime, or ElevenLabs voice limit), switch to local equivalent (e.g., Vosk for STT, eSpeak for TTS) and send notification to GUI (e.g., "Remote failed—using local mode for privacy"). Log comprehensively (timestamp, input size, provider, error code/response) to logs/network.log, with verbose mode for details like "Sent 2.5s audio to Google STT, received transcript in 1.2s".
+- **Security Enforcement**: Always minimize data sent (e.g., anonymize audio metadata, use temporary tokens for services like ElevenLabs). Support auth types (e.g., Bearer for ElevenLabs, OAuth for Google). On suspicious inputs (e.g., non-HTTPS URL or invalid key), reject and prompt via GUI ("Update to secure config?"). For paid services, estimate costs (e.g., ElevenLabs credits per request) and warn if over threshold.
+- **Accessibility Reactions**: Ensure reactions are user-friendly (e.g., if fallback happens, send audible/TTS notification via TTS Agent like "Switched to local—remote unavailable"). Support provider switching for better accessibility (e.g., ElevenLabs for natural voices in slow mode).
+- **Provider-Specific Handling**: For ElevenLabs TTS, support voice cloning (input reference audio → generate ID → use for synthesis); for remote STT like Google, handle streaming audio for real-time transcription. Allow config for multiple providers (e.g., primary: ElevenLabs, fallback: local), with test buttons in GUI prefs.
+
+## Integration
+- **With Other Agents**: Receives calls from STT for remote transcription (e.g., send audio to Google STT, return text); from TTS for synthesis (e.g., send text to ElevenLabs with voice params, return audio). Reports status/errors to GUI (e.g., lock icon red on failure, green on success). Uses Hotkeys for triggered requests (e.g., if hotkey specifies "use remote").
+- **With Orchestrator**: Subscribes to global events (e.g., "app start" to validate all configured URLs/providers upfront); publishes outputs (e.g., "remote result ready" event with data). Uses MCP for shared context (e.g., API keys across agents without repetition).
+- **Technical Notes**: Uses requests library for HTTP (with async for non-blocking), supporting streaming for real-time STT/TTS (e.g., ElevenLabs streaming API). Configurable for multiple services (e.g., toml array [providers] with type: "elevenlabs", url, key). Keeps lightweight (e.g., cache voice IDs from ElevenLabs to avoid repeated cloning calls).
+
+This updated Network Agent now fully supports remote services like ElevenLabs (voice cloning/synthesis) and STT providers (e.g., Google/AssemblyAI), with seamless fallbacks and configs for a professional feel. It's tightly integrated, ensuring "My Voice" can scale to high-quality remote ML without complexity.
+
+Next, we can expand another agent (e.g., STT.md to tie in with this) or define the orchestrator.md for unification. What's your choice? Let's keep going! 😊

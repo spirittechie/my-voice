@@ -1,4 +1,0 @@
-# requirements.txt for pip deps
-requests>=2.31.0
-vosk
-tomli

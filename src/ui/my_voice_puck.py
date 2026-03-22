@@ -102,7 +102,20 @@ class VoicePuck(Gtk.Window):
         self.mode = "Idle"
         self.is_write = False
         self.high_contrast = False
+        self.current_state = "idle"
         self.progress = Gtk.ProgressBar(visible=False, margin_top=5, margin_bottom=5)
+        try:
+            self.proxy = Gio.DBusProxy.new_for_bus_sync(
+                Gio.BusType.SESSION,
+                Gio.DBusProxyFlags.NONE,
+                None,
+                "com.myvoice.Service",
+                "/com/myvoice/service",
+                "com.myvoice.Service",
+                None,
+            )
+        except:
+            self.proxy = None
 
         self.label = Gtk.Label(
             label=self.mode, halign=Gtk.Align.CENTER, margin_top=10, margin_bottom=5
@@ -153,6 +166,7 @@ class VoicePuck(Gtk.Window):
 
         self.connect("realize", self.on_realize)
         self.connect("button-press-event", self.on_button_press)
+        self.connect("destroy", self.on_destroy)
 
     def on_realize(self, widget):
         self.present()
@@ -212,19 +226,27 @@ class VoicePuck(Gtk.Window):
             ctx.remove_class("high-contrast")
 
     def on_record(self, btn):
+        self.label.set_label("Dictating...")
         if self.proxy:
-            self.show_progress(20)  # ~15s record + process
-            self.proxy.call_sync(
-                "start_recording",
-                GLib.Variant("i", 15),
-                Gio.DBusCallFlags.NONE,
-                -1,
-                None,
-            )
+            try:
+                self.show_progress(20)
+                self.proxy.call_sync(
+                    "start_recording",
+                    GLib.Variant("i", 15),
+                    Gio.DBusCallFlags.NONE,
+                    -1,
+                    None,
+                )
+                self.label.set_label(self.mode)
+            except Exception as e:
+                self.label.set_label("Dictate failed")
+                GLib.timeout_add(1500, lambda: self.label.set_label(self.mode) or False)
+                print(f"Record error: {e}")
         else:
             print("Service not running")
 
     def on_read(self, btn):
+        self.label.set_label("Reading...")
         if self.proxy:
             try:
                 sel_var = self.proxy.call_sync(
@@ -235,16 +257,24 @@ class VoicePuck(Gtk.Window):
                     None,
                 )
                 sel = sel_var.get_child_value(0).get_string()
-                if sel:
-                    self.proxy.call_sync(
-                        "speak",
-                        GLib.Variant("s", sel),
-                        Gio.DBusCallFlags.NONE,
-                        -1,
-                        None,
+                if not sel:
+                    self.label.set_label("No selection")
+                    GLib.timeout_add(
+                        1500, lambda: self.label.set_label(self.mode) or False
                     )
-                    self.show_progress(10)
+                    return
+                self.proxy.call_sync(
+                    "speak",
+                    GLib.Variant("s", sel),
+                    Gio.DBusCallFlags.NONE,
+                    -1,
+                    None,
+                )
+                self.show_progress(10)
+                self.label.set_label(self.mode)
             except Exception as e:
+                self.label.set_label("Read failed")
+                GLib.timeout_add(1500, lambda: self.label.set_label(self.mode) or False)
                 print(f"Read error: {e}")
         else:
             print("Service not running")
@@ -261,6 +291,14 @@ class VoicePuck(Gtk.Window):
     def hide_progress(self):
         self.progress.set_visible(False)
         return False
+
+    def on_destroy(self, widget):
+        self.current_state = "idle"
+        if hasattr(self, "proxy") and self.proxy:
+            try:
+                pass  # service handles cleanup
+            except:
+                pass
 
 
 def main():
