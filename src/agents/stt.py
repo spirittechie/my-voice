@@ -4,12 +4,15 @@ import json
 import vosk
 from pathlib import Path
 import tempfile
+import os
 
 
 class STTStub:
     def __init__(self, runtime: Runtime):
         self.runtime = runtime
-        self.model = vosk.Model(str(Path("assets/en-us-small")))
+        model_dir = os.getenv("MYVOICE_MODEL_DIR", "assets/en-us-small")
+        self.record_seconds = int(os.getenv("MYVOICE_RECORD_SECONDS", "3"))
+        self.model = vosk.Model(str(Path(model_dir)))
 
     def transcribe(self):
         self.runtime.state.transition("transcribing")
@@ -17,9 +20,18 @@ class STTStub:
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                 audio_file = Path(f.name)
             subprocess.run(
-                ["arecord", "-d", "3", "-f", "cd", "-t", "wav", str(audio_file)],
+                [
+                    "arecord",
+                    "-d",
+                    str(self.record_seconds),
+                    "-f",
+                    "cd",
+                    "-t",
+                    "wav",
+                    str(audio_file),
+                ],
                 check=True,
-                timeout=4,
+                timeout=self.record_seconds + 2,
             )
             pcm = audio_file.with_suffix(".pcm")
             subprocess.run(
