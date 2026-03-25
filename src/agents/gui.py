@@ -30,6 +30,7 @@ class GUI:
         self.recording_audio = None
         self.stt_engine = os.getenv("MYVOICE_STT_ENGINE", "vosk").upper()
         self.tts_engine = "eSpeak"
+        self.stt = create_stt(self.runtime)
         self.duration_timer = None
         self.current_duration = 0
         self.current_state = "Idle"
@@ -261,7 +262,7 @@ class GUI:
         self.stt_engine = engine.upper()
         self.stt_label.set_text(f"STT: {self.stt_engine}")
         try:
-            create_stt(self.runtime)
+            self.stt = create_stt(self.runtime)
             self.update_status("Ready")
         except Exception as e:
             self.show_alert(f"Whisper unavailable, reverted to Vosk: {str(e)[:80]}")
@@ -351,8 +352,7 @@ class GUI:
         self.stop_duration_timer()
         if self.recording_audio and self.recording_audio.exists():
             try:
-                stt = create_stt(self.runtime)
-                text = stt.transcribe(str(self.recording_audio))
+                text = self.stt.transcribe(str(self.recording_audio))
                 self.runtime.state.set("transcript", text)
                 self.auto_paste(text)
             except Exception as e:
@@ -369,8 +369,7 @@ class GUI:
 
     def _record_flow(self):
         try:
-            stt = create_stt(self.runtime)
-            text = stt.transcribe()
+            text = self.stt.transcribe()
             self.runtime.state.set("transcript", text)
             self.auto_paste(text)
             GLib.idle_add(self._finish_success)
@@ -583,34 +582,72 @@ class GUI:
         if not phrase:
             return ""
 
-        # First: exact voice mappings (highest priority, from JSON)
+        # 1. Exact user mappings (highest priority)
         key = phrase.strip().lower()
         if key in self.voice_mappings:
             return self.voice_mappings[key]
 
-        # Normalize
-        text = phrase.lower().strip()
+        raw = phrase.lower().strip()
 
-        # Expanded replacements for common STT mangling and grammar
-        replacements = [
-            ("pseudo", "sudo"),
-            ("system ctl", "systemctl"),
-            ("system control", "systemctl"),
-            ("sys ctl", "systemctl"),
+        # 2. Normalize separators (do NOT destroy structure yet)
+        normalized = raw.replace("-", " ")
+        normalized = " ".join(normalized.split())
+
+        # 3. Tokenize
+        tokens = normalized.split(" ")
+
+        # 4. Command vocabulary + variants
+        vocab = {
+            "sudo": {"sudo", "pseudo", "zudo", "sudu", "susuduh", "su su duh"},
+            "systemctl": {"systemctl", "system ctl", "system control", "sys ctl"},
+            "dnf": {"dnf", "d n f"},
+            "flatpak": {"flatpak"},
+            "status": {"status"},
+            "update": {"update"},
+            "tail": {"tail"},
+        }
+
+        # Flatten vocab for lookup
+        lookup = {}
+        for canonical, variants in vocab.items():
+            for v in variants:
+                lookup[v] = canonical
+
+        # 5. Rebuild using token window matching
+        output_tokens = []
+        i = 0
+
+        while i < len(tokens):
+            # Try 3-word, then 2-word, then 1-word matches
+            matched = False
+
+            for size in (3, 2, 1):
+                if i + size <= len(tokens):
+                    chunk = " ".join(tokens[i : i + size])
+                    if chunk in lookup:
+                        output_tokens.append(lookup[chunk])
+                        i += size
+                        matched = True
+                        break
+
+            if not matched:
+                output_tokens.append(tokens[i])
+                i += 1
+
+        text = " ".join(output_tokens)
+
+        # 6. Symbol normalization (after tokens are stable)
+        symbol_map = [
             ("dash dash", "--"),
             ("dash y", "-y"),
             ("and then", "&&"),
             ("or else", "||"),
-            # Add more here as you discover them during testing
         ]
 
-        for spoken, sym in replacements:
+        for spoken, sym in symbol_map:
             text = text.replace(spoken, sym)
 
-        # General flag rule: any "dash X" becomes "-X"
         text = text.replace(" dash ", "-")
-
-        # Clean up whitespace
         text = " ".join(text.split())
 
         return text
