@@ -4,7 +4,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, GLib
 from src.runtime.runtime import Runtime
-from src.agents.stt import STTStub
+from src.agents.stt import create_stt
 from src.agents.clipboard_gateway import ClipboardGateway
 from src.agents.gui import GUI
 from src.agents.tts import TTS
@@ -13,7 +13,7 @@ from src.agents.tts import TTS
 class Orchestrator:
     def __init__(self):
         self.runtime = Runtime()
-        self.stt = STTStub(self.runtime)
+        self.stt = create_stt(self.runtime)
         self.tts = TTS(self.runtime)
         self.clipboard = ClipboardGateway(self.runtime)
         self.gui = GUI(self.runtime)

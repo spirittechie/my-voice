@@ -16,11 +16,11 @@ async def test_event_dispatch():
     rt = Runtime()
     received = []
 
-    async def h(d):
+    def h(d):
         received.append(d.get("text"))
 
     rt.events.subscribe("transcription_result", h)
-    await rt.events.emit("transcription_result", {"text": "test"})
+    rt.events.emit("transcription_result", {"text": "test"})
     assert "test" in received
 
 

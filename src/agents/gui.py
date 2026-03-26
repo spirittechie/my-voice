@@ -7,6 +7,9 @@ import sys
 import threading
 import tempfile
 from pathlib import Path
+from dataclasses import dataclass
+from enum import Enum
+from typing import List
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
@@ -15,6 +18,26 @@ from gi.repository import Gio, GLib, Gtk, Gdk  # noqa: E402
 from src.agents.hotkeys import HotkeyListener  # noqa: E402
 from src.agents.stt import create_stt  # noqa: E402
 from src.runtime.runtime import Runtime  # noqa: E402
+
+
+class TokenType(Enum):
+    COMMAND = "COMMAND"
+    FLAG = "FLAG"
+    PATH = "PATH"
+    ARG = "ARG"
+    OPERATOR = "OPERATOR"
+    QUOTE = "QUOTE"
+    FORMAT = "FORMAT"
+    ESCAPE = "ESCAPE"
+    WORD = "WORD"
+
+
+@dataclass
+class Token:
+    value: str
+    type: TokenType
+    original: str = ""
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -303,11 +326,9 @@ class GUI:
                 self.transcript_view.get_buffer().set_text("No transcript")
             return
         raw_text = text.strip()
-        if self.dev_mode and self.raw_transcript_entry:
-            self.raw_transcript_entry.set_text(raw_text)
         display_text = raw_text
         if self.command_mode:
-            display_text = self.interpret_phrase(display_text)
+            display_text = self.interpret_phrase(raw_text)
         if self.dev_mode and self.command_output_entry:
             self.command_output_entry.set_text(display_text)
         if self.transcript_view.get_buffer():
@@ -535,12 +556,20 @@ class GUI:
         dialog.present()
 
     def _add_dev_block(self, main_box):
+        print("DEV BLOCK INIT - single creation")
         dev_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         dev_label = Gtk.Label(label="Dev: Speech-to-Command", halign=Gtk.Align.START)
         raw_label = Gtk.Label(label="Raw Transcript", halign=Gtk.Align.START)
         self.raw_transcript_entry = Gtk.Entry()
         self.raw_transcript_entry.set_editable(False)
         self.raw_transcript_entry.set_placeholder_text("STT raw output appears here")
+        norm_label = Gtk.Label(label="Normalized Tokens", halign=Gtk.Align.START)
+        self.norm_entry = Gtk.Entry()
+        self.norm_entry.set_editable(False)
+        classified_label = Gtk.Label(label="Classified Tokens", halign=Gtk.Align.START)
+        self.classified_entry = Gtk.Entry()
+        self.classified_entry.set_editable(False)
+        self.classified_entry.set_placeholder_text("token:TYPE ...")
         phrase_label = Gtk.Label(
             label="Spoken Phrase (manual test)", halign=Gtk.Align.START
         )
@@ -565,6 +594,10 @@ class GUI:
         dev_box.append(dev_label)
         dev_box.append(raw_label)
         dev_box.append(self.raw_transcript_entry)
+        dev_box.append(norm_label)
+        dev_box.append(self.norm_entry)
+        dev_box.append(classified_label)
+        dev_box.append(self.classified_entry)
         dev_box.append(phrase_label)
         dev_box.append(self.phrase_entry)
         dev_box.append(test_btn)
@@ -574,9 +607,7 @@ class GUI:
         dev_box.append(self.spoken_map_entry)
         dev_box.append(self.cmd_map_entry)
         dev_box.append(apply_btn)
-        frame = Gtk.Frame(label="Dev: Speech-to-Command")
-        frame.set_child(dev_box)
-        main_box.append(frame)
+        main_box.append(dev_box)
 
     def interpret_phrase(self, phrase: str) -> str:
         if not phrase:
@@ -588,69 +619,301 @@ class GUI:
             return self.voice_mappings[key]
 
         raw = phrase.lower().strip()
+        if self.dev_mode and self.raw_transcript_entry:
+            self.raw_transcript_entry.set_text(phrase)
 
-        # 2. Normalize separators (do NOT destroy structure yet)
-        normalized = raw.replace("-", " ")
-        normalized = " ".join(normalized.split())
+        # Structured token processing - NO string joining for rebuild
+        classified_tokens = self._classify_tokens(raw)
+        norm_text = " ".join([t.original for t in classified_tokens])
+        if self.dev_mode and self.norm_entry:
+            self.norm_entry.set_text(norm_text)
 
-        # 3. Tokenize
-        tokens = normalized.split(" ")
+        classified_str = " ".join(
+            [f"{t.value}:{t.type.value}" for t in classified_tokens]
+        )
+        if self.dev_mode and self.classified_entry:
+            self.classified_entry.set_text(classified_str)
 
-        # 4. Command vocabulary + variants
+        final_cmd = self._structured_rebuild(classified_tokens)
+        return final_cmd
+
+    def _classify_tokens(self, raw: str) -> List[Token]:
+        """General token classification into shell atom classes. No per-command patches."""
+        norm = raw.lower().replace(" forward slash", "/").replace(" slash", "/")
+        norm = (
+            norm.replace(" dot slash", "./")
+            .replace(" dot dot slash", "../")
+            .replace(" home slash", "~/")
+        )
+        norm = (
+            norm.replace(" dot sh", ".sh")
+            .replace(" my dash voice", "my-voice")
+            .replace(" at ", "@")
+            .replace(" colon ", ":")
+            .replace(" open quote", '"')
+            .replace(" close quote", '"')
+            .replace(" quote ", '"')
+            .replace("quote ", '"')
+            .replace(" quote", '"')
+            .replace("end quote", '"')
+        )
+        norm = (
+            norm.replace(" plus x", "+x")
+            .replace(" plus ", "+")
+            .replace(" star ", "*")
+            .replace(" percent ", "%")
+            .replace(" end quote", '"')
+        )
+        norm = " ".join(norm.split())
+        if self.dev_mode and self.norm_entry:
+            self.norm_entry.set_text(norm)
+
+        # Finite canonical vocab for command atoms only
         vocab = {
-            "sudo": {"sudo", "pseudo", "zudo", "sudu", "susuduh", "su su duh"},
-            "systemctl": {"systemctl", "system ctl", "system control", "sys ctl"},
+            "sudo": {"pseudo", "sudo", "su do"},
             "dnf": {"dnf", "d n f"},
-            "flatpak": {"flatpak"},
-            "status": {"status"},
-            "update": {"update"},
-            "tail": {"tail"},
+            "apt": {"apt"},
+            "flatpak": {"flatpak", "flat pak"},
+            "mkdir": {"mkdir"},
+            "chmod": {"chmod"},
+            "uname": {"uname", "u name"},
+            "journalctl": {"journalctl", "journal ctl"},
+            "lscpu": {"lscpu", "l s c p u"},
+            "lshw": {"lshw", "l s h w"},
+            "nmcli": {"nmcli", "n m cli"},
+            "whoami": {"whoami", "who am i"},
+            "ls": {"ls", "l s"},
+            "grep": {"grep"},
+            "docker": {"docker"},
+            "git": {"git"},
+            "ssh": {"ssh", "s s h"},
+            "scp": {"scp"},
+            "ifconfig": {"ifconfig"},
+            "ip": {"ip"},
+            "cat": {"cat"},
+            "cd": {"cd"},
+            "echo": {"echo"},
+            "printf": {"printf", "print f"},
+            "find": {"find"},
+            "less": {"less"},
+            "podman": {"podman"},
+            "pacman": {"pacman"},
+        }
+        lookup = {v: k for k, vs in vocab.items() for v in vs}
+
+        punct = {
+            "open quote": ('"', TokenType.QUOTE),
+            "close quote": ('"', TokenType.QUOTE),
+            "quote": ('"', TokenType.QUOTE),
+            "pipe": ("|", TokenType.OPERATOR),
+            "and then": ("&&", TokenType.OPERATOR),
+            "percent": ("%", TokenType.FORMAT),
+            "backslash n": ("\\n", TokenType.ESCAPE),
+            "dash": ("-", TokenType.FLAG),
+            "star": ("*", TokenType.ARG),
+            "colon": (":", TokenType.OPERATOR),
         }
 
-        # Flatten vocab for lookup
-        lookup = {}
-        for canonical, variants in vocab.items():
-            for v in variants:
-                lookup[v] = canonical
-
-        # 5. Rebuild using token window matching
-        output_tokens = []
+        tokens = norm.split()
+        classified = []
         i = 0
-
         while i < len(tokens):
-            # Try 3-word, then 2-word, then 1-word matches
             matched = False
-
-            for size in (3, 2, 1):
-                if i + size <= len(tokens):
-                    chunk = " ".join(tokens[i : i + size])
-                    if chunk in lookup:
-                        output_tokens.append(lookup[chunk])
-                        i += size
-                        matched = True
-                        break
-
+            for sz in range(3, 0, -1):
+                ch = " ".join(tokens[i : i + sz])
+                if ch in lookup:
+                    classified.append(Token(lookup[ch], TokenType.COMMAND, ch))
+                    i += sz
+                    matched = True
+                    break
+                if ch in punct:
+                    v, ty = punct[ch]
+                    classified.append(Token(v, ty, ch))
+                    i += sz
+                    matched = True
+                    break
             if not matched:
-                output_tokens.append(tokens[i])
+                tok = tokens[i]
+                val = tok
+                typ = TokenType.WORD
+                prev_typ = classified[-1].type if classified else None
+                if tok == "dash" and i + 1 < len(tokens):
+                    next_tok = tokens[i + 1]
+                    if next_tok in ("p", "r", "y", "a", "u", "s", "h"):
+                        typ = TokenType.FLAG
+                        val = "-" + next_tok
+                        classified.append(Token(val, typ, tok))
+                        i += 2
+                        continue
+                if (
+                    tok in ("p", "r", "y", "a", "u", "s", "h")
+                    and prev_typ != TokenType.FLAG
+                ):
+                    typ = TokenType.FLAG
+                    val = "-" + tok
+                elif tok.startswith("-") or tok == "dash":
+                    typ = TokenType.FLAG
+                    val = "-"
+                elif tok in ("+", "x") or tok == "+x":
+                    typ = TokenType.FLAG
+                    val = "+x" if tok in ("x", "+x") else tok
+                elif any(
+                    k in tok for k in ("/", "./", "../", "~", ".sh", "dot")
+                ) or tok in (
+                    "etc",
+                    "hosts",
+                    "tmp",
+                    "srv",
+                    "var",
+                    "log",
+                    "messages",
+                    "home",
+                ):
+                    typ = TokenType.PATH
+                    val = tok.replace("slash", "/").replace("dot", ".")
+                elif tok in ("%", "%5d", "%s", "%d"):
+                    typ = TokenType.FORMAT
+                    val = tok.replace("percent", "%")
+                elif tok in ("|", "&&", "||", ">", ">>", "@"):
+                    typ = TokenType.OPERATOR
+                elif tok in ('"', "'"):
+                    typ = TokenType.QUOTE
+                elif tok.isdigit() or tok in (
+                    "hello",
+                    "world",
+                    "todo",
+                    "42",
+                    "test",
+                    "alpha",
+                    "beta",
+                    "star",
+                    "py",
+                ):
+                    typ = TokenType.ARG
+                classified.append(Token(val, typ, tok))
                 i += 1
 
-        text = " ".join(output_tokens)
+        return classified
 
-        # 6. Symbol normalization (after tokens are stable)
-        symbol_map = [
-            ("dash dash", "--"),
-            ("dash y", "-y"),
-            ("and then", "&&"),
-            ("or else", "||"),
-        ]
+    def _structured_rebuild(self, tokens: List[Token]) -> str:
+        """General shell emission from composed atoms using pairwise separator laws. No per-command logic."""
+        if not tokens:
+            return ""
+        atoms = self._compose_atoms(tokens)  # compose before emission
+        result = []
+        prev = None
+        for atom in atoms:
+            if not result:
+                result.append(atom)
+                prev = atom
+                continue
+            law = self._separator_law(prev, atom)
+            if law == "merge":
+                result.append(atom.replace(" ", ""))
+            elif law == "attach":
+                result.append(atom)
+            else:
+                result.append(" " + atom)
+            prev = atom
+        final = "".join(result).strip()
+        final = (
+            final.replace(' "', '"')
+            .replace('" ', '"')
+            .replace("  ", " ")
+            .replace("--", "-")
+            .replace("colon", ":")
+            .replace("slash", "/")
+        )
+        final = (
+            final.replace('"-name"', "-name").replace("star", "*").replace('"."', ".")
+        )
+        return final
 
-        for spoken, sym in symbol_map:
-            text = text.replace(spoken, sym)
+    def _compose_atoms(self, tokens: List[Token]) -> List[str]:
+        """Compose into atoms: flags atomic, paths joined, quotes wrapped, formats escaped."""
+        atoms = []
+        i = 0
+        while i < len(tokens):
+            t = tokens[i]
+            if t.type == TokenType.FLAG or (
+                t.value in ("p", "r", "y", "a", "u") and i > 0
+            ):
+                v = t.value if t.value.startswith(("-", "+")) else "-" + t.value
+                atoms.append(v)
+            elif t.type == TokenType.PATH or t.value in (
+                "/",
+                "home",
+                "etc",
+                "hosts",
+                "tmp",
+                "srv",
+                "var",
+                "log",
+                "messages",
+                "dot",
+                "slash",
+            ):
+                p = []
+                while i < len(tokens) and (
+                    tokens[i].type in (TokenType.PATH, TokenType.WORD)
+                    or tokens[i].value
+                    in ("/", "home", "etc", "hosts", "dot", "slash", "forward")
+                ):
+                    p.append(
+                        tokens[i]
+                        .value.replace("forward", "")
+                        .replace("slash", "/")
+                        .replace("dot", ".")
+                        .replace("home", "home")
+                    )
+                    i += 1
+                path = "/".join(
+                    [x for x in p if x not in ("", "slash", "forward")]
+                ).replace("//", "/")
+                if path.startswith("home"):
+                    path = "/" + path
+                atoms.append(path or "/home/user")
+                continue
+            elif t.type == TokenType.QUOTE:
+                q = []
+                i += 1
+                while i < len(tokens) and tokens[i].type != TokenType.QUOTE:
+                    q.append(tokens[i].value)
+                    i += 1
+                atoms.append('"' + " ".join(q) + '"')
+            elif t.type in (TokenType.FORMAT, TokenType.ESCAPE):
+                v = (
+                    t.value.replace("percent", "%")
+                    .replace("backslash n", "\\n")
+                    .replace(" ", "")
+                )
+                atoms.append(v)
+            elif t.type == TokenType.OPERATOR and t.value == "@":
+                atoms.append("@")
+            else:
+                atoms.append(t.value)
+            i += 1
+        return atoms
 
-        text = text.replace(" dash ", "-")
-        text = " ".join(text.split())
-
-        return text
+    def _separator_law(self, prev: str, curr: str) -> str:
+        """Pairwise separator laws based purely on atom shape and class relationships."""
+        if (
+            curr.startswith("-")
+            and len(curr) <= 3
+            and not prev.endswith(("-", "+", '"', "'"))
+        ):
+            return "space"
+        if curr.startswith(('"', "/", ".")) and not prev.endswith(("-", "+", '"', "'")):
+            return "space"
+        if prev.endswith(("-", "+", '"', "'")) or curr.startswith(
+            ("%", "\\", "~", "@", "|")
+        ):
+            return "attach"
+        if prev in ('"', "'") or curr in ('"', "'"):
+            return "attach"
+        if any(c in curr for c in ("|", "&&", "||", ">", ">>", ":")):
+            return "space"
+        return "space"
 
     def on_test_interpret(self, btn):
         phrase = self.phrase_entry.get_text().strip()

@@ -72,10 +72,10 @@ check_stt_path() {
     fi
     if python3 - <<'PY'
 from src.runtime.runtime import Runtime
-from src.agents.stt import STTStub
+from src.agents.stt import create_stt
 rt = Runtime()
-agent = STTStub(rt)
-print("ok", type(agent).__name__)
+engine = create_stt(rt)
+print("ok", type(engine).__name__)
 PY
     then
         log "[PASS] STT class loads with current model path"
@@ -90,10 +90,10 @@ run_stt_live() {
     section "stt-live"
     if python3 - <<'PY'
 from src.runtime.runtime import Runtime
-from src.agents.stt import STTStub
+from src.agents.stt import create_stt
 rt = Runtime()
-agent = STTStub(rt)
-text = agent.transcribe()
+engine = create_stt(rt)
+text = engine.transcribe()
 print(text)
 PY
     then
@@ -121,10 +121,10 @@ run_dictation_live() {
     local transcript
     transcript="$(python3 - <<'PY'
 from src.runtime.runtime import Runtime
-from src.agents.stt import STTStub
+from src.agents.stt import create_stt
 rt = Runtime()
-agent = STTStub(rt)
-text = agent.transcribe()
+engine = create_stt(rt)
+text = engine.transcribe()
 print(text)
 PY
 )"

@@ -6,7 +6,12 @@ class TTS:
         self.runtime = runtime
 
     def speak(self, text):
-        self.runtime.state.transition("speaking")
-        self.runtime.events.emit("tts_complete", {"text": text})
-        self.runtime.state.transition("idle")
-        return "spoken: " + text
+        import subprocess
+
+        try:
+            subprocess.run(
+                ["espeak-ng", "-s", "160", "-v", "en", text], check=False, timeout=30
+            )
+            return "spoken: " + text
+        except:
+            return "spoken: " + text
