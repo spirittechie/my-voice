@@ -1,24 +1,26 @@
 import gi
+import json
 import logging
 import os
 import subprocess
+import sys
 import threading
 import tempfile
 from pathlib import Path
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gio, GLib, Gtk, Gdk
+from gi.repository import Gio, GLib, Gtk, Gdk  # noqa: E402
 
-from src.agents.hotkeys import HotkeyListener
-from src.agents.stt import create_stt
-from src.runtime.runtime import Runtime
+from src.agents.hotkeys import HotkeyListener  # noqa: E402
+from src.agents.stt import create_stt  # noqa: E402
+from src.runtime.runtime import Runtime  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 
 
 class GUI:
-    def __init__(self, runtime, app=None):
+    def __init__(self, runtime, app=None, dev_mode=False):
         self.runtime = runtime
         self._busy = False
         self._tts_process = None
@@ -28,18 +30,63 @@ class GUI:
         self.recording_audio = None
         self.stt_engine = os.getenv("MYVOICE_STT_ENGINE", "vosk").upper()
         self.tts_engine = "eSpeak"
+        self.stt = create_stt(self.runtime)
         self.duration_timer = None
         self.current_duration = 0
         self.current_state = "Idle"
+        self.dev_mode = dev_mode
+        self.raw_transcript_entry = None
+        self.voice_mappings = {}
+        self.command_mode = False
+        self.mappings_path = (
+            Path.home() / ".config" / "my-voice" / "voice_mappings.json"
+        )
+        self._load_mappings()
         self.window = Gtk.Window(title="My Voice", application=app)
-        self.window.set_default_size(420, 480)
+        self.window.set_default_size(460, 720 if dev_mode else 620)
         self.window.connect("close-request", self.on_close_request)
 
         css_provider = Gtk.CssProvider()
         css_provider.load_from_data(b"""
-            .recording-dot { color: #d32f2f; font-size: 18px; }
-            .status-box { background: #fafafa; padding: 6px; border-radius: 4px; }
-            .transcript-panel { background: #fafafa; border: 1px solid #e0e0e0; border-radius: 6px; }
+            window {
+                background: #1e1f22;
+                color: #e5e7eb;
+            }
+            .status-box {
+                background: #2d333d;
+                padding: 6px 10px;
+                border: 1px solid #3f4654;
+                border-radius: 6px;
+            }
+            .status-box label {
+                color: #eef2f7;
+                font-size: 13px;
+            }
+            .status-dot {
+                color: #7b8494;
+                font-size: 14px;
+                min-width: 12px;
+                padding: 0;
+            }
+            .status-box label.status-dot.recording {
+                color: #e53935;
+            }
+            .transcript-panel {
+                background: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+            }
+            .transcript-panel textview {
+                padding: 16px 20px;
+                background: #f8fafc;
+                color: #111827;
+            }
+            button {
+                color: #f8fafc;
+                background: #3a414d;
+                border-color: #4a5262;
+            }
+            button label { color: #f8fafc; }
             label { padding: 2px 0; }
         """)
         Gtk.StyleContext.add_provider_for_display(
@@ -62,7 +109,13 @@ class GUI:
         )
         prefs_btn = Gtk.Button(label="Preferences...")
         prefs_btn.connect("clicked", self.open_prefs)
+        self.command_toggle = Gtk.ToggleButton(label="Command Mode")
+        self.command_toggle.connect("toggled", self.toggle_command_mode)
+        helper_btn = Gtk.Button(label="Show Helper")
+        helper_btn.connect("clicked", self.show_helper)
         menu_box.append(prefs_btn)
+        menu_box.append(self.command_toggle)
+        menu_box.append(helper_btn)
         menu_popover.set_child(menu_box)
         hamburger.set_popover(menu_popover)
         header.pack_start(hamburger)
@@ -77,18 +130,29 @@ class GUI:
             margin_bottom=12,
         )
 
-        status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         status_box.add_css_class("status-box")
+        state_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        state_row.set_halign(Gtk.Align.START)
+        state_row.set_valign(Gtk.Align.CENTER)
         self.recording_dot = Gtk.Label(label="●", halign=Gtk.Align.START)
-        self.recording_dot.add_css_class("recording-dot")
-        self.recording_dot.set_visible(False)
+        self.recording_dot.add_css_class("status-dot")
+        self.recording_dot.set_opacity(0.45)
+        self.recording_dot.set_single_line_mode(True)
+        self.recording_dot.set_valign(Gtk.Align.CENTER)
+        self.recording_dot.set_xalign(0.5)
         self.state_label = Gtk.Label(label="State: Idle", halign=Gtk.Align.START)
+        self.state_label.set_wrap(False)
+        self.state_label.set_single_line_mode(True)
+        self.state_label.set_valign(Gtk.Align.CENTER)
+        self.state_label.set_xalign(0.0)
+        state_row.append(self.recording_dot)
+        state_row.append(self.state_label)
         self.stt_label = Gtk.Label(
             label=f"STT: {self.stt_engine}", halign=Gtk.Align.START
         )
         self.duration_label = Gtk.Label(label="Duration: 00:00", halign=Gtk.Align.START)
-        status_box.append(self.recording_dot)
-        status_box.append(self.state_label)
+        status_box.append(state_row)
         status_box.append(self.stt_label)
         status_box.append(self.duration_label)
         main_box.append(status_box)
@@ -121,20 +185,29 @@ class GUI:
         tts_box.append(self.read_btn)
         main_box.append(tts_box)
 
-        transcript_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        transcript_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         transcript_label = Gtk.Label(label="Transcript", halign=Gtk.Align.START)
         self.scrolled = Gtk.ScrolledWindow()
-        self.scrolled.set_min_content_height(150)
+        self.scrolled.set_min_content_height(200)
         self.scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self.scrolled.set_vexpand(True)
         self.transcript_view = Gtk.TextView()
         self.transcript_view.set_wrap_mode(Gtk.WrapMode.WORD)
         self.transcript_view.set_editable(False)
         self.transcript_view.set_cursor_visible(False)
+        self.transcript_view.set_left_margin(20)
+        self.transcript_view.set_right_margin(20)
+        self.transcript_view.set_top_margin(16)
+        self.transcript_view.set_bottom_margin(16)
+        self.transcript_view.set_size_request(-1, 200)
         self.scrolled.set_child(self.transcript_view)
         self.scrolled.add_css_class("transcript-panel")
         transcript_box.append(transcript_label)
         transcript_box.append(self.scrolled)
         main_box.append(transcript_box)
+
+        if self.dev_mode:
+            self._add_dev_block(main_box)
 
         footer = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=0, margin_top=12
@@ -145,7 +218,10 @@ class GUI:
         footer.append(self.hotkey_label)
         main_box.append(footer)
 
-        self.window.set_child(main_box)
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_child(main_box)
+        self.window.set_child(scroller)
         self.hotkeys = HotkeyListener(self.on_hotkey, self.window)
         self.hotkeys.start()
         self.update_status("Idle")
@@ -170,9 +246,11 @@ class GUI:
         self.state_label.set_text(f"State: {display_state}")
         self.stt_label.set_text(f"STT: {self.stt_engine}")
         if state in ("Recording", "recording"):
-            self.recording_dot.set_visible(True)
+            self.recording_dot.add_css_class("recording")
+            self.recording_dot.set_opacity(1.0)
         else:
-            self.recording_dot.set_visible(False)
+            self.recording_dot.remove_css_class("recording")
+            self.recording_dot.set_opacity(0.45)
         if display_state not in ("Recording", "Transcribing"):
             self.duration_label.set_text("Duration: 00:00")
             self.stop_duration_timer()
@@ -184,7 +262,7 @@ class GUI:
         self.stt_engine = engine.upper()
         self.stt_label.set_text(f"STT: {self.stt_engine}")
         try:
-            create_stt(self.runtime)
+            self.stt = create_stt(self.runtime)
             self.update_status("Ready")
         except Exception as e:
             self.show_alert(f"Whisper unavailable, reverted to Vosk: {str(e)[:80]}")
@@ -224,7 +302,14 @@ class GUI:
             if self.transcript_view.get_buffer():
                 self.transcript_view.get_buffer().set_text("No transcript")
             return
-        display_text = text.strip()
+        raw_text = text.strip()
+        if self.dev_mode and self.raw_transcript_entry:
+            self.raw_transcript_entry.set_text(raw_text)
+        display_text = raw_text
+        if self.command_mode:
+            display_text = self.interpret_phrase(display_text)
+        if self.dev_mode and self.command_output_entry:
+            self.command_output_entry.set_text(display_text)
         if self.transcript_view.get_buffer():
             self.transcript_view.get_buffer().set_text(display_text)
         self.update_status("Ready")
@@ -267,8 +352,7 @@ class GUI:
         self.stop_duration_timer()
         if self.recording_audio and self.recording_audio.exists():
             try:
-                stt = create_stt(self.runtime)
-                text = stt.transcribe(str(self.recording_audio))
+                text = self.stt.transcribe(str(self.recording_audio))
                 self.runtime.state.set("transcript", text)
                 self.auto_paste(text)
             except Exception as e:
@@ -285,8 +369,7 @@ class GUI:
 
     def _record_flow(self):
         try:
-            stt = create_stt(self.runtime)
-            text = stt.transcribe()
+            text = self.stt.transcribe()
             self.runtime.state.set("transcript", text)
             self.auto_paste(text)
             GLib.idle_add(self._finish_success)
@@ -446,7 +529,191 @@ class GUI:
             transient_for=self.window,
             message_type=Gtk.MessageType.ERROR,
             buttons=Gtk.ButtonsType.OK,
-            text=msg[:300],  # truncate long error messages
+            text=msg[:300],
+        )
+        dialog.connect("response", lambda d, r: (d.destroy(), None))
+        dialog.present()
+
+    def _add_dev_block(self, main_box):
+        dev_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        dev_label = Gtk.Label(label="Dev: Speech-to-Command", halign=Gtk.Align.START)
+        raw_label = Gtk.Label(label="Raw Transcript", halign=Gtk.Align.START)
+        self.raw_transcript_entry = Gtk.Entry()
+        self.raw_transcript_entry.set_editable(False)
+        self.raw_transcript_entry.set_placeholder_text("STT raw output appears here")
+        phrase_label = Gtk.Label(
+            label="Spoken Phrase (manual test)", halign=Gtk.Align.START
+        )
+        self.phrase_entry = Gtk.Entry()
+        self.phrase_entry.set_placeholder_text(
+            "pseudo dnf dash y update and then flatpak update dash y"
+        )
+        test_btn = Gtk.Button(label="Test Interpretation")
+        test_btn.connect("clicked", self.on_test_interpret)
+        output_label = Gtk.Label(label="Command Output", halign=Gtk.Align.START)
+        self.command_output_entry = Gtk.Entry()
+        self.command_output_entry.set_editable(False)
+        map_label = Gtk.Label(label="Voice Mapping", halign=Gtk.Align.START)
+        self.spoken_map_entry = Gtk.Entry()
+        self.spoken_map_entry.set_placeholder_text("update system")
+        self.cmd_map_entry = Gtk.Entry()
+        self.cmd_map_entry.set_placeholder_text(
+            "sudo dnf -y update && flatpak update -y"
+        )
+        apply_btn = Gtk.Button(label="Apply Mapping")
+        apply_btn.connect("clicked", self.on_apply_mapping)
+        dev_box.append(dev_label)
+        dev_box.append(raw_label)
+        dev_box.append(self.raw_transcript_entry)
+        dev_box.append(phrase_label)
+        dev_box.append(self.phrase_entry)
+        dev_box.append(test_btn)
+        dev_box.append(output_label)
+        dev_box.append(self.command_output_entry)
+        dev_box.append(map_label)
+        dev_box.append(self.spoken_map_entry)
+        dev_box.append(self.cmd_map_entry)
+        dev_box.append(apply_btn)
+        frame = Gtk.Frame(label="Dev: Speech-to-Command")
+        frame.set_child(dev_box)
+        main_box.append(frame)
+
+    def interpret_phrase(self, phrase: str) -> str:
+        if not phrase:
+            return ""
+
+        # 1. Exact user mappings (highest priority)
+        key = phrase.strip().lower()
+        if key in self.voice_mappings:
+            return self.voice_mappings[key]
+
+        raw = phrase.lower().strip()
+
+        # 2. Normalize separators (do NOT destroy structure yet)
+        normalized = raw.replace("-", " ")
+        normalized = " ".join(normalized.split())
+
+        # 3. Tokenize
+        tokens = normalized.split(" ")
+
+        # 4. Command vocabulary + variants
+        vocab = {
+            "sudo": {"sudo", "pseudo", "zudo", "sudu", "susuduh", "su su duh"},
+            "systemctl": {"systemctl", "system ctl", "system control", "sys ctl"},
+            "dnf": {"dnf", "d n f"},
+            "flatpak": {"flatpak"},
+            "status": {"status"},
+            "update": {"update"},
+            "tail": {"tail"},
+        }
+
+        # Flatten vocab for lookup
+        lookup = {}
+        for canonical, variants in vocab.items():
+            for v in variants:
+                lookup[v] = canonical
+
+        # 5. Rebuild using token window matching
+        output_tokens = []
+        i = 0
+
+        while i < len(tokens):
+            # Try 3-word, then 2-word, then 1-word matches
+            matched = False
+
+            for size in (3, 2, 1):
+                if i + size <= len(tokens):
+                    chunk = " ".join(tokens[i : i + size])
+                    if chunk in lookup:
+                        output_tokens.append(lookup[chunk])
+                        i += size
+                        matched = True
+                        break
+
+            if not matched:
+                output_tokens.append(tokens[i])
+                i += 1
+
+        text = " ".join(output_tokens)
+
+        # 6. Symbol normalization (after tokens are stable)
+        symbol_map = [
+            ("dash dash", "--"),
+            ("dash y", "-y"),
+            ("and then", "&&"),
+            ("or else", "||"),
+        ]
+
+        for spoken, sym in symbol_map:
+            text = text.replace(spoken, sym)
+
+        text = text.replace(" dash ", "-")
+        text = " ".join(text.split())
+
+        return text
+
+    def on_test_interpret(self, btn):
+        phrase = self.phrase_entry.get_text().strip()
+        if not phrase and self.raw_transcript_entry:
+            phrase = self.raw_transcript_entry.get_text().strip()
+        if phrase:
+            cmd = self.interpret_phrase(phrase)
+            self.command_output_entry.set_text(cmd)
+
+    def on_apply_mapping(self, btn):
+        spoken = self.spoken_map_entry.get_text().strip()
+        cmd = self.cmd_map_entry.get_text().strip()
+        if spoken and cmd:
+            self.voice_mappings[spoken] = cmd
+            self._save_mappings()
+            self.show_alert(f"Mapping added for: {spoken}")
+
+    def toggle_command_mode(self, btn):
+        self.command_mode = btn.get_active()
+        mode_str = "Command" if self.command_mode else "Idle"
+        self.update_status(mode_str)
+
+    def _load_mappings(self):
+        self.mappings_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.mappings_path.exists():
+            try:
+                with open(self.mappings_path, "r") as f:
+                    self.voice_mappings = json.load(f)
+            except Exception:
+                self.voice_mappings = {}
+        else:
+            self.voice_mappings = {}
+
+    def _save_mappings(self):
+        try:
+            with open(self.mappings_path, "w") as f:
+                json.dump(self.voice_mappings, f, indent=2)
+        except Exception:
+            pass
+
+    def show_helper(self, btn):
+        mappings_str = (
+            "\n".join([f"{k} → {v}" for k, v in self.voice_mappings.items()])
+            or "No saved mappings"
+        )
+        helper_text = f"""Command Helper:
+dash y → -y
+dash dash help → --help
+dot slash → ./
+dot dot slash → ../
+and then → &&
+pipe → |
+home → ~
+dollar home → $HOME
+dollar path → $PATH
+
+Saved voice mappings:
+{mappings_str}"""
+        dialog = Gtk.MessageDialog(
+            transient_for=self.window,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text=helper_text,
         )
         dialog.connect("response", lambda d, r: (d.destroy(), None))
         dialog.present()
@@ -466,7 +733,8 @@ if __name__ == "__main__":
 
     def on_activate(app):
         runtime = Runtime()
-        gui = GUI(runtime, app)
+        dev_mode = "--dev" in sys.argv
+        gui = GUI(runtime, app, dev_mode=dev_mode)
         gui.show()
 
     app.connect("activate", on_activate)

@@ -31,22 +31,6 @@ The agent must:
 - refuse to leave the repo in a dirty state unless explicitly told to pause without committing
 - never ask the user unless the task cannot be completed without it or an error occurs that requires user decision
 
-## Definition of Meaningful Edit
-
-A meaningful edit includes any of the following:
-- code change
-- config change
-- prompt change
-- markdown/spec correction
-- README update
-- refactor affecting behavior
-- file creation
-- file deletion
-- rename
-- test addition or modification
-
-Minor whitespace-only cleanup may be grouped, but do not hide real work inside “formatting” commits.
-
 ## Documentation Synchronization Rule
 
 If code behavior changes, the agent must check whether the following also need updates:
