@@ -31,22 +31,6 @@ The agent must:
 - refuse to leave the repo in a dirty state unless explicitly told to pause without committing
 - never ask the user unless the task cannot be completed without it or an error occurs that requires user decision
 
-## Definition of Meaningful Edit
-
-A meaningful edit includes any of the following:
-- code change
-- config change
-- prompt change
-- markdown/spec correction
-- README update
-- refactor affecting behavior
-- file creation
-- file deletion
-- rename
-- test addition or modification
-
-Minor whitespace-only cleanup may be grouped, but do not hide real work inside “formatting” commits.
-
 ## Documentation Synchronization Rule
 
 If code behavior changes, the agent must check whether the following also need updates:
@@ -163,42 +147,16 @@ If a markdown file is aspirational, label it clearly as future design, proposal,
 
 ## Required Working Pattern
 
-For every task, the agent must follow this order:
+For every task, the agent should follow this order:
 
-1. Declare one bounded implementation pass (scoped objective + affected surface).
-2. Create a git checkpoint first (before any non-trivial edit).
-3. Perform ONLY that bounded pass.
-4. Verify the pass.
-5. Commit immediately at the bottom.
-
-## Orchestration Doctrine: Bounded Pass + Checkpoint Discipline
-
-Preservation is mandatory project infrastructure.
-
-**Hard Rules:**
-
-1. **BOUNDED PASS REQUIRED**  
-   Before any implementation, explicitly bound the pass to one scoped objective and defined files/surface. No open-ended repo wandering.
-
-2. **CHECKPOINT AT THE TOP**  
-   Before any non-trivial change (code, UI, doctrine, interpreter, persistence, control surface): create a git checkpoint first. No exceptions for "small" changes.
-
-3. **COMMIT AT THE BOTTOM**  
-   After completing and verifying a bounded pass: commit immediately. No delaying or batching.
-
-4. **NO AMBIGUITY**  
-   Explicitly reject skipping checkpoints, delaying commits, or combining unrelated changes.
-
-5. **PRESERVATION AS INFRASTRUCTURE**  
-   Checkpointing and committing are not optional. They are required project infrastructure.
-
-6. **FAILURE RULE**  
-   If checkpoint/commit unavailable, stop implementation. Only planning/review/docs allowed until restored.
-
-7. **COMMIT FREQUENCY**  
-   Many small commits per session preferred. High commit count is not a problem. Losing recoverability is.
-
-This doctrine makes the process unmistakable: one bounded pass → checkpoint first → commit last.
+1. Read the relevant code and markdown.
+2. Identify the smallest coherent change.
+3. Edit only what is necessary.
+4. Sync related docs.
+5. Review the diff.
+6. Commit immediately.
+7. Push immediately.
+8. Report what changed.
 
 ## Diff Review Expectation
 
@@ -244,22 +202,20 @@ Commit early. Commit clearly. Push continuously.
 
 # Git Hard Rules
 
-The agent must follow the **Orchestration Doctrine: Bounded Pass + Checkpoint Discipline** (above).
-
-The agent must commit and push after every meaningful repository edit (one bounded pass = one commit).
+The agent must commit and push after every meaningful repository edit.
 
 A meaningful edit includes code, config, docs, prompts, tests, file creation, deletion, rename, or behavior change.
 
 Default workflow:
-1. declare one bounded pass
-2. checkpoint first
-3. execute only that pass
-4. verify
-5. commit at bottom
+1. inspect status
+2. edit
+3. update related docs
+4. review diff
+5. commit
 6. push
 7. confirm clean working tree
 
-The agent must not leave large uncommitted work trees. Many small commits preferred.
+The agent must not leave large uncommitted work trees.
 
 The agent must not let markdown drift away from code.
 
