@@ -639,31 +639,7 @@ class GUI:
 
     def _classify_tokens(self, raw: str) -> List[Token]:
         """General token classification into shell atom classes. No per-command patches."""
-        norm = raw.lower().replace(" forward slash", "/").replace(" slash", "/")
-        norm = (
-            norm.replace(" dot slash", "./")
-            .replace(" dot dot slash", "../")
-            .replace(" home slash", "~/")
-        )
-        norm = (
-            norm.replace(" dot sh", ".sh")
-            .replace(" my dash voice", "my-voice")
-            .replace(" at ", "@")
-            .replace(" colon ", ":")
-            .replace(" open quote", '"')
-            .replace(" close quote", '"')
-            .replace(" quote ", '"')
-            .replace("quote ", '"')
-            .replace(" quote", '"')
-            .replace("end quote", '"')
-        )
-        norm = (
-            norm.replace(" plus x", "+x")
-            .replace(" plus ", "+")
-            .replace(" star ", "*")
-            .replace(" percent ", "%")
-            .replace(" end quote", '"')
-        )
+        norm = " ".join(raw.lower().split())
         norm = " ".join(norm.split())
         if self.dev_mode and self.norm_entry:
             self.norm_entry.set_text(norm)
@@ -704,6 +680,7 @@ class GUI:
         punct = {
             "open quote": ('"', TokenType.QUOTE),
             "close quote": ('"', TokenType.QUOTE),
+            "end quote": ('"', TokenType.QUOTE),
             "quote": ('"', TokenType.QUOTE),
             "pipe": ("|", TokenType.OPERATOR),
             "and then": ("&&", TokenType.OPERATOR),
@@ -712,6 +689,7 @@ class GUI:
             "dash": ("-", TokenType.FLAG),
             "star": ("*", TokenType.ARG),
             "colon": (":", TokenType.OPERATOR),
+            "forward slash": ("slash", TokenType.PATH),
         }
 
         tokens = norm.split()
@@ -737,6 +715,12 @@ class GUI:
                 val = tok
                 typ = TokenType.WORD
                 prev_typ = classified[-1].type if classified else None
+                if tok == "dash" and i + 2 < len(tokens) and tokens[i + 1] == "dash":
+                    typ = TokenType.FLAG
+                    val = "--" + tokens[i + 2]
+                    classified.append(Token(val, typ, tok))
+                    i += 3
+                    continue
                 if tok == "dash" and i + 1 < len(tokens):
                     next_tok = tokens[i + 1]
                     if next_tok in ("p", "r", "y", "a", "u", "s", "h"):
@@ -745,13 +729,7 @@ class GUI:
                         classified.append(Token(val, typ, tok))
                         i += 2
                         continue
-                if (
-                    tok in ("p", "r", "y", "a", "u", "s", "h")
-                    and prev_typ != TokenType.FLAG
-                ):
-                    typ = TokenType.FLAG
-                    val = "-" + tok
-                elif tok.startswith("-") or tok == "dash":
+                if tok.startswith("-") or tok == "dash":
                     typ = TokenType.FLAG
                     val = "-"
                 elif tok in ("+", "x") or tok == "+x":
@@ -760,6 +738,8 @@ class GUI:
                 elif any(
                     k in tok for k in ("/", "./", "../", "~", ".sh", "dot")
                 ) or tok in (
+                    "slash",
+                    "forward",
                     "etc",
                     "hosts",
                     "tmp",
@@ -788,8 +768,12 @@ class GUI:
                     "beta",
                     "star",
                     "py",
+                    "s",
+                    "d",
                 ):
                     typ = TokenType.ARG
+                if tok == "todo":
+                    val = "TODO"
                 classified.append(Token(val, typ, tok))
                 i += 1
 
@@ -859,19 +843,23 @@ class GUI:
                     or tokens[i].value
                     in ("/", "home", "etc", "hosts", "dot", "slash", "forward")
                 ):
-                    p.append(
-                        tokens[i]
-                        .value.replace("forward", "")
-                        .replace("slash", "/")
-                        .replace("dot", ".")
-                        .replace("home", "home")
-                    )
+                    p.append(tokens[i].value)
                     i += 1
-                path = "/".join(
-                    [x for x in p if x not in ("", "slash", "forward")]
-                ).replace("//", "/")
-                if path.startswith("home"):
-                    path = "/" + path
+                path = ""
+                for seg in p:
+                    if seg in ("slash", "/", "forward"):
+                        if not path.endswith("/"):
+                            path += "/"
+                        continue
+                    if seg == "dot":
+                        path += "."
+                        continue
+                    if seg == "dotdot":
+                        path += ".."
+                        continue
+                    if path and not path.endswith(("/", ".", ":")):
+                        path += "/"
+                    path += seg
                 atoms.append(path or "/home/user")
                 continue
             elif t.type == TokenType.QUOTE:
@@ -882,12 +870,30 @@ class GUI:
                     i += 1
                 atoms.append('"' + " ".join(q) + '"')
             elif t.type in (TokenType.FORMAT, TokenType.ESCAPE):
-                v = (
-                    t.value.replace("percent", "%")
-                    .replace("backslash n", "\\n")
-                    .replace(" ", "")
-                )
-                atoms.append(v)
+                if t.value == "%":
+                    fmt = "%"
+                    j = i + 1
+                    while j < len(tokens) and tokens[j].type in (
+                        TokenType.ARG,
+                        TokenType.WORD,
+                        TokenType.ESCAPE,
+                    ):
+                        part = tokens[j].value
+                        if part == "\\n":
+                            fmt += "\\n"
+                            j += 1
+                            break
+                        fmt += part
+                        j += 1
+                    atoms.append('"' + fmt + '"')
+                    i = j - 1
+                else:
+                    v = (
+                        t.value.replace("percent", "%")
+                        .replace("backslash n", "\\n")
+                        .replace(" ", "")
+                    )
+                    atoms.append(v)
             elif t.type == TokenType.OPERATOR and t.value == "@":
                 atoms.append("@")
             else:

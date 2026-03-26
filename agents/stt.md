@@ -1,5 +1,7 @@
 # STT Agent for "My Voice"
 
+Status: design proposal (aspirational). This document describes intended future behavior and is not a direct description of the current `src/agents/stt.py` implementation.
+
 ## Role
 The STT Agent is responsible for capturing user speech from the microphone, transcribing it using configurable models (Vosk as lightweight local default, whisper.cpp for advanced GPU/accuracy), and handling output delivery (e.g., auto-copy to clipboard or paste at cursor). It serves as the "input engine" for the app, enabling seamless dictation for accessibility users (e.g., those with fatigue, motor impairments, or dyslexia) by turning spoken words into editable text that can be inserted directly into any text field or document. The agent prioritizes reliability and intuition—short recording sessions to avoid overwhelm, noise suppression for clear results in real-world settings, and quick fallbacks (e.g., to local mode if remote fails) with minimal user intervention. It supports scalability, allowing switches to remote services via the Network Agent for higher accuracy (e.g., cloud STT), making "My Voice" a versatile tool for creative tasks like podcast scripting or dramatic readings without typing strain.
 

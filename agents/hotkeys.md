@@ -1,5 +1,7 @@
 # Hotkeys Agent for "My Voice"
 
+Status: design proposal (aspirational). This document describes intended future behavior and is not a direct description of the current `src/agents/hotkeys.py` implementation.
+
 ## Role
 The Hotkeys Agent serves as the central input listener and dispatcher for the app, capturing global hotkeys, keyboard events, and wake-words to trigger actions like starting STT recording or TTS playback. It acts as the "command hub," enabling hands-free and low-effort interaction for accessibility users (e.g., those with motor impairments, fatigue, or speech preferences) by supporting both physical keys (e.g., Super + W) and voice commands (e.g., "My Voice, read this"). The agent prioritizes reliability and intuition—short-hold detection to minimize physical strain, customizable bindings for personal needs, and graceful error handling (e.g., if permissions fail, fallback to GUI prompts). It supports scalability, allowing extension to advanced inputs like gesture detection or custom wake-phrases, making "My Voice" a versatile tool for tasks like quick dictation or reading without constant mouse/keyboard use.
 

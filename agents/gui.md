@@ -1,5 +1,7 @@
 # GUI Agent for "My Voice"
 
+Status: design proposal (aspirational). This document describes future behavior and is not a direct description of the current `src/agents/gui.py` implementation.
+
 ## Role
 The GUI Agent manages the app's user interface as a small, intuitive "puck" window that serves as the central control hub for STT (speech-to-text) and TTS (text-to-speech) operations. It provides visual feedback to reduce cognitive load for users with fatigue or disabilities, ensuring the app feels modern, responsive, and accessible (e.g., high-contrast modes, obvious status, no clutter). The interface is a compact 4:3 rectangle (e.g., 300x225px) with a slim top bar for core controls, avoiding a "boxy" look by using rounded edges, subtle shadows, and smooth animations. It handles mode switching (Write for recording/transcribing, Read for TTS playback), menu access, and preferences, while reacting to events from other agents (e.g., displaying "Recording..." progress). The design prioritizes intuition: One-click actions for common tasks, blunt mode indicators (e.g., large icons/colors), and quick prefs for customization, making it a "mind-blown" accessibility tool for Linux users (e.g., speak to paste, highlight to read with real control).
 
